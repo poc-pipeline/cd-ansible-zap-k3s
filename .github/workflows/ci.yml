@@ -12,12 +12,12 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Build and push Docker image
+      - name: Build and push container image
         run: |
-          docker build --load \
-            -t 127.0.0.1:5000/sample-app:${{ github.sha }} \
+          podman build \
+            -t localhost:5000/sample-app:${{ github.sha }} \
             ./sample-app
-          docker push 127.0.0.1:5000/sample-app:${{ github.sha }}
+          podman push localhost:5000/sample-app:${{ github.sha }}
 
       - name: Trigger AWX CD pipeline
         run: |
