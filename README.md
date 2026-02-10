@@ -28,7 +28,7 @@ Decoupled CI/CD pipeline with OWASP ZAP security scanning on **k3s + AWX Operato
 
 - **WSL2** (Ubuntu 22.04+) or Linux host
 - **k3s** (installed via `scripts/setup-k3s.sh`)
-- **Podman** or **Docker** (for building images locally)
+- **Podman** (for building images — Docker Desktop cannot reach k3s NodePort on WSL2)
 - **Ansible** 2.16+ with `kubernetes.core` collection
 - **Python** `kubernetes` package (`pip install kubernetes`)
 
@@ -136,7 +136,7 @@ cd-ansible-zap-k3s/
 │   ├── registry/                   # Registry Deployment + NodePort
 │   ├── sample-app/                 # App Deployment + Service
 │   ├── scanning/                   # PVC, ConfigMap, Job templates
-│   └── rbac/                       # ServiceAccount, Role, RoleBinding
+│   └── rbac/                       # ServiceAccount, Role, RoleBinding, ClusterRole
 ├── scripts/
 │   ├── setup-k3s.sh                # Install k3s
 │   ├── deploy-awx.sh               # Install AWX Operator
@@ -170,6 +170,22 @@ sudo systemctl restart k3s
 This does not affect Docker Desktop functionality — `docker` commands continue to work normally. The mount will reappear after a WSL2 reboot, so the unmount must be repeated (the setup script handles this).
 
 See [k3s-io/k3s#4483](https://github.com/k3s-io/k3s/issues/4483) for details.
+
+### CI: Docker Desktop cannot push to k3s registry
+
+Docker Desktop on WSL2 runs in a separate network namespace and cannot reach k3s NodePort services (`localhost:5000`). Use **Podman** for image builds — it runs natively in WSL2 and shares the network namespace with k3s.
+
+### AWX: PVC stuck in Pending state
+
+If `awx-projects-claim` PVC stays Pending, the access mode is likely `ReadWriteMany`. The k3s `local-path` provisioner only supports `ReadWriteOnce`. The AWX instance spec includes `projects_storage_access_mode: ReadWriteOnce` to handle this.
+
+### AWX: CRD race condition during install
+
+Applying the AWX Operator and instance simultaneously fails because the AWX CRD doesn't exist yet when the instance manifest is processed. `scripts/deploy-awx.sh` handles this by deploying the operator first, waiting for the CRD, then deploying the instance.
+
+### AWX: EE pod cannot find kubernetes Python module
+
+The AWX EE base image has Python 3.9 as default but `pip3` is symlinked to Python 3.11. `awx/Dockerfile.ee` bootstraps pip for Python 3.9 directly to ensure the `kubernetes` package is installed for the correct interpreter.
 
 ## Documentation
 

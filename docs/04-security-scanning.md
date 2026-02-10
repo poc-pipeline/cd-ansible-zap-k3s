@@ -51,21 +51,18 @@ This is standard k8s networking — no special bridge network or container linki
 
 ```
 ┌──────────────┐     ┌──────────────┐     ┌──────────────┐
-│  ZAP Job Pod │────▶│  PVC:        │────▶│ Helper Pod   │
-│  writes JSON │     │  zap-reports │     │ kubectl cp   │
-│  to /zap/wrk │     │  (1Gi)       │     │ to local     │
-└──────────────┘     └──────────────┘     └──────┬───────┘
-                                                  │
-                                           ┌──────▼───────┐
-                                           │  reports/     │
-                                           │  ├── zap-baseline-report.json
-                                           │  └── zap-full-report.json
-                                           └──────────────┘
+│  ZAP Job Pod │────▶│  PVC:        │────▶│  AWX EE Pod  │
+│  writes JSON │     │  zap-reports │     │  reads from   │
+│  to /zap/wrk │     │  (1Gi)       │     │  /reports     │
+└──────────────┘     └──────────────┘     └──────────────┘
 ```
+
+In the AWX context, the same PVC (`zap-reports`) is mounted in both ZAP Job pods (`/zap/wrk`) and AWX EE pods (`/reports`). Reports written by ZAP are directly accessible to the evaluate playbook — no file copy needed. The helper pod + `kubectl cp` step in the playbook is a fallback for non-AWX execution.
 
 Why PVC instead of bind mounts:
 - k8s Jobs are ephemeral — pod filesystem is lost when Job completes
 - PVC persists across pod restarts and Job recreation
+- Same PVC is shared between ZAP jobs and AWX EE pods via the Container Group pod spec
 - Same pattern works on OpenShift (PersistentVolumeClaim)
 - No host path dependencies
 
@@ -97,7 +94,7 @@ risk_threshold: 3  # 0=Info, 1=Low, 2=Medium, 3=High, 4=Critical
 
 ### Logic
 
-1. Read `zap-full-report.json` from local `reports/` directory
+1. Read `zap-full-report.json` from `/reports` (PVC mount)
 2. Parse JSON and extract alerts from all scanned sites
 3. Filter alerts where `riskcode >= risk_threshold`
 4. If any high-risk alerts found → **fail the pipeline**

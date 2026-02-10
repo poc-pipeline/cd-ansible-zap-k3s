@@ -35,11 +35,11 @@ Developer ──push──▶ GitHub ──trigger──▶ GitHub Actions (CI)
 **Trigger**: Push to `main` branch
 
 1. **Checkout** code
-2. **Build** Docker image: `localhost:5000/sample-app:<sha>`
+2. **Build** container image with Podman: `localhost:5000/sample-app:<sha>`
 3. **Push** to in-cluster registry at `localhost:5000`
 4. **Trigger AWX** workflow via REST API POST to `/api/v2/workflow_job_templates/{id}/launch/`
 
-The self-hosted runner has Docker/Podman CLI access and network access to both the registry (NodePort :5000) and AWX API (NodePort :8043).
+The self-hosted runner uses **Podman** (not Docker Desktop) because Podman runs natively in WSL2 and shares the network namespace with k3s — Docker Desktop runs in a separate VM and cannot reach k3s NodePort services. The runner has network access to both the registry (NodePort :5000) and AWX API (NodePort :8043).
 
 ## Phase 2: CD (AWX Workflow)
 
@@ -109,5 +109,5 @@ sudo ./scripts/setup-k3s.sh
 | `image_tag` | CI (git SHA) or manual (`latest`) | `deploy.yml` — sets container image tag |
 | `app_namespace` | Default `apps` | All playbooks — target namespace |
 | `target_url` | Default `http://sample-app.apps.svc.cluster.local:8080` | `zap-scan.yml` — ZAP target |
-| `reports_dir` | Relative `../../reports` or PVC `/reports` | `zap-scan.yml`, `evaluate-report.yml` |
+| `reports_dir` | Default `/reports` (PVC mount in AWX EE pods) | `zap-scan.yml`, `evaluate-report.yml` |
 | `risk_threshold` | Default `3` (High) | `evaluate-report.yml` — quality gate threshold |
