@@ -27,15 +27,25 @@ echo "  Namespace '${AWX_NAMESPACE}' and admin secret ready."
 # ── 2. Deploy AWX Operator via Kustomize ──────────────────────────────────────
 
 echo "--- [2/5] Deploying AWX Operator..."
-kubectl apply -k "${PROJECT_ROOT}/awx/kustomize/"
-echo "  Kustomize resources applied."
+# Apply operator first (skip AWX instance — CRD won't exist yet)
+kubectl apply -k "github.com/ansible/awx-operator/config/default?ref=2.19.1" -n "$AWX_NAMESPACE"
+echo "  AWX Operator resources applied."
 
-# ── 3. Wait for Operator ─────────────────────────────────────────────────────
+# ── 3. Wait for Operator + CRD ──────────────────────────────────────────────
 
 echo "--- [3/5] Waiting for AWX Operator to be ready..."
 kubectl -n "$AWX_NAMESPACE" wait --for=condition=Available \
   deployment/awx-operator-controller-manager --timeout=300s
 echo "  AWX Operator is running."
+
+echo "  Waiting for AWX CRD to be registered..."
+kubectl wait --for=condition=Established \
+  crd/awxs.awx.ansible.com --timeout=60s
+echo "  CRD ready."
+
+echo "  Applying AWX instance..."
+kubectl apply -f "${PROJECT_ROOT}/awx/kustomize/awx-instance.yaml"
+echo "  AWX instance created."
 
 # ── 4. Wait for AWX pods ─────────────────────────────────────────────────────
 

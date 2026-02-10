@@ -6,7 +6,7 @@ set -euo pipefail
 AWX_URL="${AWX_URL:-http://localhost:8043}"
 AWX_USER="${AWX_USER:-admin}"
 AWX_PASS="${AWX_PASS:-admin}"
-GIT_REPO_URL="${GIT_REPO_URL:-https://github.com/YOUR_USER/cd-ansible-zap-k3s.git}"
+GIT_REPO_URL="${GIT_REPO_URL:-https://github.com/poc-pipeline/cd-ansible-zap-k3s.git}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
