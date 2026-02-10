@@ -7,8 +7,9 @@ RUN curl -LO "https://dl.k8s.io/release/$(curl -sL https://dl.k8s.io/release/sta
     install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl && \
     rm kubectl
 
-# Install kubernetes Python client + Ansible collection
-RUN pip3 install kubernetes && \
+# Install kubernetes Python client for all Python versions + Ansible collection
+RUN curl -sS https://bootstrap.pypa.io/get-pip.py | python3.9 && \
+    python3.9 -m pip install kubernetes && \
     ansible-galaxy collection install kubernetes.core
 
 USER 1000

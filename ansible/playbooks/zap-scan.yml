@@ -9,7 +9,7 @@
     app_namespace: apps
     target_url: "http://sample-app.apps.svc.cluster.local:8080"
     zap_image: "ghcr.io/zaproxy/zaproxy:stable"
-    reports_dir: "{{ playbook_dir }}/../../reports"
+    reports_dir: /reports
 
   tasks:
     # ── Ensure infrastructure ──────────────────────────────────────────────
@@ -218,7 +218,6 @@
       ansible.builtin.file:
         path: "{{ reports_dir }}"
         state: directory
-        mode: "0755"
 
     - name: Create helper pod to access PVC
       kubernetes.core.k8s:

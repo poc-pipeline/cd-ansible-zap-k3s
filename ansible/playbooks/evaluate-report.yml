@@ -6,7 +6,7 @@
   hosts: localhost
   gather_facts: false
   vars:
-    reports_dir: "{{ playbook_dir }}/../../reports"
+    reports_dir: /reports
     report_file: "{{ reports_dir }}/zap-full-report.json"
     risk_threshold: 3  # 0=Informational, 1=Low, 2=Medium, 3=High, 4=Critical
 

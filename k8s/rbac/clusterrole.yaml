@@ -1,0 +1,45 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: awx-ee-namespace-manager
+rules:
+  - apiGroups: [""]
+    resources:
+      - namespaces
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: awx-ee-namespace-manager
+subjects:
+  - kind: ServiceAccount
+    name: awx-ee-sa
+    namespace: apps
+roleRef:
+  kind: ClusterRole
+  name: awx-ee-namespace-manager
+  apiGroup: rbac.authorization.k8s.io
+---
+# Grant AWX service account admin access in apps namespace
+# (required for Container Group to create/manage EE pods)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: awx-manage-apps
+  namespace: apps
+subjects:
+  - kind: ServiceAccount
+    name: awx
+    namespace: awx
+roleRef:
+  kind: ClusterRole
+  name: admin
+  apiGroup: rbac.authorization.k8s.io

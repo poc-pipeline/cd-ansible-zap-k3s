@@ -149,7 +149,6 @@ DEPLOY_JT_ID=$(awx_api POST /job_templates/ \
     \"project\": ${PROJ_ID},
     \"playbook\": \"ansible/playbooks/deploy.yml\",
     \"execution_environment\": ${EE_ID},
-    \"instance_groups\": [${CG_ID}],
     \"ask_variables_on_launch\": true,
     \"extra_vars\": \"image_tag: latest\",
     \"description\": \"Deploy sample-app to k8s namespace apps\"
@@ -165,7 +164,6 @@ ZAP_JT_ID=$(awx_api POST /job_templates/ \
     \"project\": ${PROJ_ID},
     \"playbook\": \"ansible/playbooks/zap-scan.yml\",
     \"execution_environment\": ${EE_ID},
-    \"instance_groups\": [${CG_ID}],
     \"extra_vars\": \"reports_dir: /reports\",
     \"description\": \"Run OWASP ZAP baseline and full scans as k8s Jobs\"
   }" | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
@@ -180,11 +178,17 @@ EVAL_JT_ID=$(awx_api POST /job_templates/ \
     \"project\": ${PROJ_ID},
     \"playbook\": \"ansible/playbooks/evaluate-report.yml\",
     \"execution_environment\": ${EE_ID},
-    \"instance_groups\": [${CG_ID}],
     \"extra_vars\": \"reports_dir: /reports\",
     \"description\": \"Parse ZAP report and enforce security quality gate\"
   }" | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
 echo "  Evaluate JT ID: ${EVAL_JT_ID}"
+
+# Associate Container Group with Job Templates (must be done via separate API call)
+for JT_ID in $DEPLOY_JT_ID $ZAP_JT_ID $EVAL_JT_ID; do
+  awx_api POST "/job_templates/${JT_ID}/instance_groups/" \
+    -d "{\"id\": ${CG_ID}}" > /dev/null
+done
+echo "  Container Group associated with all Job Templates."
 
 # ── 8. Create Workflow Template ───────────────────────────────────────────────
 
