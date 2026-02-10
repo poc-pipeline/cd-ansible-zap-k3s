@@ -1,0 +1,96 @@
+---
+# deploy.yml — Deploy sample-app to k8s via kubernetes.core
+# Satisfies: FR-CD-01, FR-CD-02, FR-CD-03
+
+- name: Deploy sample application to Kubernetes
+  hosts: localhost
+  gather_facts: false
+  vars:
+    image_tag: "{{ image_tag | mandatory }}"
+    image_name: "localhost:5000/sample-app"
+    app_namespace: apps
+
+  tasks:
+    - name: Ensure apps namespace exists
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Namespace
+          metadata:
+            name: "{{ app_namespace }}"
+
+    - name: Deploy sample-app
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: sample-app
+            namespace: "{{ app_namespace }}"
+            labels:
+              app: sample-app
+          spec:
+            replicas: 1
+            selector:
+              matchLabels:
+                app: sample-app
+            template:
+              metadata:
+                labels:
+                  app: sample-app
+              spec:
+                containers:
+                  - name: sample-app
+                    image: "{{ image_name }}:{{ image_tag }}"
+                    ports:
+                      - containerPort: 8080
+                    readinessProbe:
+                      httpGet:
+                        path: /health
+                        port: 8080
+                      initialDelaySeconds: 10
+                      periodSeconds: 5
+                    livenessProbe:
+                      httpGet:
+                        path: /health
+                        port: 8080
+                      initialDelaySeconds: 30
+                      periodSeconds: 10
+
+    - name: Ensure sample-app Service exists
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: sample-app
+            namespace: "{{ app_namespace }}"
+          spec:
+            type: ClusterIP
+            selector:
+              app: sample-app
+            ports:
+              - port: 8080
+                targetPort: 8080
+
+    - name: Wait for Deployment to be ready
+      kubernetes.core.k8s_info:
+        api_version: apps/v1
+        kind: Deployment
+        name: sample-app
+        namespace: "{{ app_namespace }}"
+      register: deploy_status
+      retries: 24
+      delay: 5
+      until:
+        - deploy_status.resources | length > 0
+        - (deploy_status.resources[0].status.readyReplicas | default(0)) >= 1
+
+    - name: Display deployment status
+      ansible.builtin.debug:
+        msg: >-
+          sample-app deployed successfully.
+          Ready replicas: {{ deploy_status.resources[0].status.readyReplicas | default(0) }}

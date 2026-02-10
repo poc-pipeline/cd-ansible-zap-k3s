@@ -1,0 +1,294 @@
+---
+# zap-scan.yml — Run OWASP ZAP baseline and full scans as k8s Jobs
+# Satisfies: FR-CD-04, FR-CD-05, FR-CD-06
+
+- name: Run OWASP ZAP security scans on Kubernetes
+  hosts: localhost
+  gather_facts: false
+  vars:
+    app_namespace: apps
+    target_url: "http://sample-app.apps.svc.cluster.local:8080"
+    zap_image: "ghcr.io/zaproxy/zaproxy:stable"
+    reports_dir: "{{ playbook_dir }}/../../reports"
+
+  tasks:
+    # ── Ensure infrastructure ──────────────────────────────────────────────
+
+    - name: Ensure ZAP reports PVC exists
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: PersistentVolumeClaim
+          metadata:
+            name: zap-reports
+            namespace: "{{ app_namespace }}"
+          spec:
+            accessModes:
+              - ReadWriteOnce
+            storageClassName: local-path
+            resources:
+              requests:
+                storage: 1Gi
+
+    - name: Ensure ZAP rules ConfigMap exists
+      kubernetes.core.k8s:
+        state: present
+        src: "{{ playbook_dir }}/../../k8s/scanning/configmap-rules.yaml"
+
+    # ── Cleanup old Jobs ───────────────────────────────────────────────────
+
+    - name: Delete old ZAP baseline Job
+      kubernetes.core.k8s:
+        state: absent
+        api_version: batch/v1
+        kind: Job
+        name: zap-baseline
+        namespace: "{{ app_namespace }}"
+        delete_options:
+          propagationPolicy: Background
+
+    - name: Delete old ZAP full scan Job
+      kubernetes.core.k8s:
+        state: absent
+        api_version: batch/v1
+        kind: Job
+        name: zap-full
+        namespace: "{{ app_namespace }}"
+        delete_options:
+          propagationPolicy: Background
+
+    - name: Wait for old Jobs to be cleaned up
+      ansible.builtin.pause:
+        seconds: 5
+
+    # ── Baseline scan ──────────────────────────────────────────────────────
+
+    - name: Create ZAP baseline scan Job
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: batch/v1
+          kind: Job
+          metadata:
+            name: zap-baseline
+            namespace: "{{ app_namespace }}"
+            labels:
+              app: zap
+              scan-type: baseline
+          spec:
+            backoffLimit: 0
+            ttlSecondsAfterFinished: 3600
+            template:
+              metadata:
+                labels:
+                  app: zap
+                  scan-type: baseline
+              spec:
+                restartPolicy: Never
+                containers:
+                  - name: zap
+                    image: "{{ zap_image }}"
+                    command:
+                      - zap-baseline.py
+                      - "-t"
+                      - "{{ target_url }}"
+                      - "-J"
+                      - "zap-baseline-report.json"
+                      - "-c"
+                      - "/zap/wrk/rules.tsv"
+                      - "-I"
+                    volumeMounts:
+                      - name: reports
+                        mountPath: /zap/wrk
+                      - name: rules
+                        mountPath: /zap/wrk/rules.tsv
+                        subPath: rules.tsv
+                        readOnly: true
+                    securityContext:
+                      runAsUser: 0
+                volumes:
+                  - name: reports
+                    persistentVolumeClaim:
+                      claimName: zap-reports
+                  - name: rules
+                    configMap:
+                      name: zap-rules
+
+    - name: Wait for baseline scan to complete
+      kubernetes.core.k8s_info:
+        api_version: batch/v1
+        kind: Job
+        name: zap-baseline
+        namespace: "{{ app_namespace }}"
+      register: baseline_job
+      retries: 60
+      delay: 10
+      until:
+        - baseline_job.resources | length > 0
+        - >-
+          (baseline_job.resources[0].status.succeeded | default(0)) >= 1
+          or (baseline_job.resources[0].status.failed | default(0)) >= 1
+
+    - name: Report baseline scan result
+      ansible.builtin.debug:
+        msg: >-
+          Baseline scan {{ 'succeeded' if (baseline_job.resources[0].status.succeeded | default(0)) >= 1
+          else 'completed with warnings (exit code non-zero)' }}
+
+    # ── Full scan ──────────────────────────────────────────────────────────
+
+    - name: Create ZAP full scan Job
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: batch/v1
+          kind: Job
+          metadata:
+            name: zap-full
+            namespace: "{{ app_namespace }}"
+            labels:
+              app: zap
+              scan-type: full
+          spec:
+            backoffLimit: 0
+            ttlSecondsAfterFinished: 3600
+            template:
+              metadata:
+                labels:
+                  app: zap
+                  scan-type: full
+              spec:
+                restartPolicy: Never
+                containers:
+                  - name: zap
+                    image: "{{ zap_image }}"
+                    command:
+                      - zap-full-scan.py
+                      - "-t"
+                      - "{{ target_url }}"
+                      - "-J"
+                      - "zap-full-report.json"
+                      - "-c"
+                      - "/zap/wrk/rules.tsv"
+                      - "-I"
+                      - "-m"
+                      - "10"
+                    volumeMounts:
+                      - name: reports
+                        mountPath: /zap/wrk
+                      - name: rules
+                        mountPath: /zap/wrk/rules.tsv
+                        subPath: rules.tsv
+                        readOnly: true
+                    securityContext:
+                      runAsUser: 0
+                volumes:
+                  - name: reports
+                    persistentVolumeClaim:
+                      claimName: zap-reports
+                  - name: rules
+                    configMap:
+                      name: zap-rules
+
+    - name: Wait for full scan to complete
+      kubernetes.core.k8s_info:
+        api_version: batch/v1
+        kind: Job
+        name: zap-full
+        namespace: "{{ app_namespace }}"
+      register: full_job
+      retries: 120
+      delay: 10
+      until:
+        - full_job.resources | length > 0
+        - >-
+          (full_job.resources[0].status.succeeded | default(0)) >= 1
+          or (full_job.resources[0].status.failed | default(0)) >= 1
+
+    - name: Report full scan result
+      ansible.builtin.debug:
+        msg: >-
+          Full scan {{ 'succeeded' if (full_job.resources[0].status.succeeded | default(0)) >= 1
+          else 'completed with warnings (exit code non-zero)' }}
+
+    # ── Extract reports via helper pod ─────────────────────────────────────
+
+    - name: Ensure local reports directory exists
+      ansible.builtin.file:
+        path: "{{ reports_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: Create helper pod to access PVC
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: report-helper
+            namespace: "{{ app_namespace }}"
+            labels:
+              app: report-helper
+          spec:
+            containers:
+              - name: helper
+                image: docker.io/library/busybox:latest
+                command: ["sleep", "300"]
+                volumeMounts:
+                  - name: reports
+                    mountPath: /reports
+            volumes:
+              - name: reports
+                persistentVolumeClaim:
+                  claimName: zap-reports
+
+    - name: Wait for helper pod to be ready
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Pod
+        name: report-helper
+        namespace: "{{ app_namespace }}"
+      register: helper_pod
+      retries: 12
+      delay: 5
+      until:
+        - helper_pod.resources | length > 0
+        - helper_pod.resources[0].status.phase == "Running"
+
+    - name: Copy baseline report from PVC
+      ansible.builtin.command:
+        cmd: >-
+          kubectl cp {{ app_namespace }}/report-helper:/reports/zap-baseline-report.json
+          {{ reports_dir }}/zap-baseline-report.json
+      ignore_errors: true
+
+    - name: Copy full scan report from PVC
+      ansible.builtin.command:
+        cmd: >-
+          kubectl cp {{ app_namespace }}/report-helper:/reports/zap-full-report.json
+          {{ reports_dir }}/zap-full-report.json
+      ignore_errors: true
+
+    - name: Delete helper pod
+      kubernetes.core.k8s:
+        state: absent
+        api_version: v1
+        kind: Pod
+        name: report-helper
+        namespace: "{{ app_namespace }}"
+
+    - name: List generated reports
+      ansible.builtin.find:
+        paths: "{{ reports_dir }}"
+        patterns: "*.json"
+      register: report_files
+
+    - name: Display scan summary
+      ansible.builtin.debug:
+        msg: |
+          ZAP scans completed.
+          Baseline scan: {{ 'succeeded' if (baseline_job.resources[0].status.succeeded | default(0)) >= 1 else 'completed with warnings' }}
+          Full scan: {{ 'succeeded' if (full_job.resources[0].status.succeeded | default(0)) >= 1 else 'completed with warnings' }}
+          Reports found: {{ report_files.files | map(attribute='path') | list }}

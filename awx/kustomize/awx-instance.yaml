@@ -1,0 +1,24 @@
+---
+apiVersion: awx.ansible.com/v1beta1
+kind: AWX
+metadata:
+  name: awx
+  namespace: awx
+spec:
+  service_type: nodeport
+  nodeport_port: 8043
+
+  # Postgres storage
+  postgres_storage_class: local-path
+  postgres_storage_requirements:
+    requests:
+      storage: 5Gi
+
+  # Projects persistence
+  projects_persistence: true
+  projects_storage_class: local-path
+  projects_storage_size: 2Gi
+
+  # Admin account
+  admin_user: admin
+  admin_password_secret: awx-admin-password

@@ -1,0 +1,62 @@
+---
+# evaluate-report.yml — Parse ZAP JSON report and enforce pass/fail gate
+# Satisfies: FR-CD-07
+
+- name: Evaluate ZAP scan report
+  hosts: localhost
+  gather_facts: false
+  vars:
+    reports_dir: "{{ playbook_dir }}/../../reports"
+    report_file: "{{ reports_dir }}/zap-full-report.json"
+    risk_threshold: 3  # 0=Informational, 1=Low, 2=Medium, 3=High, 4=Critical
+
+  tasks:
+    - name: Check if ZAP report exists
+      ansible.builtin.stat:
+        path: "{{ report_file }}"
+      register: report_stat
+
+    - name: Fail if report is missing
+      ansible.builtin.fail:
+        msg: "ZAP report not found at {{ report_file }}. Ensure zap-scan.yml ran successfully."
+      when: not report_stat.stat.exists
+
+    - name: Read ZAP JSON report
+      ansible.builtin.slurp:
+        src: "{{ report_file }}"
+      register: report_raw
+
+    - name: Parse report and extract alerts
+      ansible.builtin.set_fact:
+        zap_report: "{{ report_raw.content | b64decode | from_json }}"
+
+    - name: Extract high-risk alerts
+      ansible.builtin.set_fact:
+        high_risk_alerts: >-
+          {{ zap_report.site | default([]) |
+             map(attribute='alerts', default=[]) | flatten |
+             selectattr('riskcode', 'defined') |
+             selectattr('riskcode', 'ge', risk_threshold | string) |
+             list }}
+
+    - name: Display findings summary
+      ansible.builtin.debug:
+        msg: |
+          Total sites scanned: {{ zap_report.site | default([]) | length }}
+          High/Critical findings: {{ high_risk_alerts | length }}
+
+    - name: Display high-risk alert details
+      ansible.builtin.debug:
+        msg: "{{ item.alert }} (Risk: {{ item.riskdesc }}, Confidence: {{ item.confidence }})"
+      loop: "{{ high_risk_alerts }}"
+      loop_control:
+        label: "{{ item.alert | default('unknown') }}"
+      when: high_risk_alerts | length > 0
+
+    - name: Fail pipeline if high-risk findings found
+      ansible.builtin.fail:
+        msg: >
+          SECURITY GATE FAILED: {{ high_risk_alerts | length }} finding(s) at or above
+          risk level {{ risk_threshold }} (High/Critical). Review the ZAP report at
+          {{ report_file }} for details.
+      when: high_risk_alerts | length > 0

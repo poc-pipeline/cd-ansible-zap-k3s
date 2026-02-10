@@ -1,0 +1,49 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: zap-full
+  namespace: apps
+  labels:
+    app: zap
+    scan-type: full
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        app: zap
+        scan-type: full
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: zap
+          image: ghcr.io/zaproxy/zaproxy:stable
+          command:
+            - zap-full-scan.py
+            - "-t"
+            - "http://sample-app.apps.svc.cluster.local:8080"
+            - "-J"
+            - "zap-full-report.json"
+            - "-c"
+            - "/zap/wrk/rules.tsv"
+            - "-I"
+            - "-m"
+            - "10"
+          volumeMounts:
+            - name: reports
+              mountPath: /zap/wrk
+            - name: rules
+              mountPath: /zap/wrk/rules.tsv
+              subPath: rules.tsv
+              readOnly: true
+          securityContext:
+            runAsUser: 0
+      volumes:
+        - name: reports
+          persistentVolumeClaim:
+            claimName: zap-reports
+        - name: rules
+          configMap:
+            name: zap-rules

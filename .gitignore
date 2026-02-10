@@ -1,0 +1,47 @@
+# Java / Maven
+target/
+*.class
+*.jar
+*.war
+*.ear
+*.log
+hs_err_pid*
+
+# IDE
+.idea/
+*.iml
+*.iws
+*.ipr
+.project
+.classpath
+.settings/
+*.swp
+*.swo
+*~
+.vscode/*
+!.vscode/settings.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment / Secrets
+.env
+*.pem
+*.key
+credentials.json
+
+# Ansible
+*.retry
+
+# AWX
+awx/config/SECRET_KEY
+
+# ZAP reports (generated at runtime)
+reports/*.json
+reports/*.html
+reports/*.xml
+!reports/.gitkeep
+
+# k3s
+/kubeconfig
