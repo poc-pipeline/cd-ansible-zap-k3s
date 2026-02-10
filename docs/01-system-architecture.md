@@ -50,10 +50,12 @@ This mirrors OpenShift's project-based isolation.
 
 ## Kubernetes Network Topology
 
-- **Registry** (`apps/registry`): NodePort :5000 — accessible from host for `podman push` and from cluster nodes for image pulls
+- **Registry** (`apps/registry`): NodePort :5000 — accessible from WSL2 host for `podman push` and from cluster nodes for image pulls
 - **sample-app** (`apps/sample-app`): ClusterIP :8080 — accessible within cluster via `sample-app.apps.svc.cluster.local:8080`
-- **AWX** (`awx/awx-service`): NodePort :8043 — accessible from host for Web UI and API calls
+- **AWX** (`awx/awx-service`): NodePort :8043 — accessible from WSL2 host for Web UI and API calls
 - **ZAP Jobs**: Access sample-app via k8s Service DNS (no special networking needed)
+
+**WSL2 note**: NodePort services bind to `localhost` inside WSL2. From Windows, use the WSL2 IP (`hostname -I`) instead — e.g. `http://<WSL2_IP>:8043` for the AWX UI. Docker Desktop cannot reach these ports because it runs in a separate network namespace; use Podman instead for image builds.
 
 ## Technology Decisions
 

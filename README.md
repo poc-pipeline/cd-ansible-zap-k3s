@@ -187,6 +187,31 @@ Applying the AWX Operator and instance simultaneously fails because the AWX CRD 
 
 The AWX EE base image has Python 3.9 as default but `pip3` is symlinked to Python 3.11. `awx/Dockerfile.ee` bootstraps pip for Python 3.9 directly to ensure the `kubernetes` package is installed for the correct interpreter.
 
+### WSL2: Accessing k3s services from Windows
+
+k3s NodePort services (AWX UI, registry) listen on `localhost` inside WSL2, which is not reachable from the Windows host. Use the WSL2 IP instead:
+
+```bash
+# Get WSL2 IP
+hostname -I | awk '{print $1}'
+```
+
+| Service | WSL2 URL | Purpose |
+|---------|----------|---------|
+| AWX UI | `http://<WSL2_IP>:8043` | AWX Web interface (admin/admin) |
+| Registry | `http://<WSL2_IP>:5000` | Container image registry |
+| Sample App | Cluster-internal only | `sample-app.apps.svc.cluster.local:8080` |
+
+**Podman Desktop**: To view k3s pods from Podman Desktop on Windows, copy the kubeconfig with the WSL2 IP:
+
+```bash
+WSL_IP=$(hostname -I | awk '{print $1}')
+sed "s|https://127.0.0.1:6443|https://${WSL_IP}:6443|" ~/.kube/config > /mnt/c/Users/$USER/.kube/config
+sed -i 's|certificate-authority-data:.*|insecure-skip-tls-verify: true|' /mnt/c/Users/$USER/.kube/config
+```
+
+**Note**: The WSL2 IP changes on reboot — re-run the commands above after restarting WSL2.
+
 ## Documentation
 
 - [System Architecture](docs/01-system-architecture.md)
